@@ -43,7 +43,12 @@ const getApp = async (): Promise<FastifyInstance> => {
     return global.__slaApiApp;
   }
 
-  const { buildApp } = await import('../src/app');
+  // Use compiled dist output — importing ../src/app makes Vercel treat src/app.js as a serverless entry
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { buildApp } = require('../dist/app') as {
+    buildApp: () => Promise<FastifyInstance>;
+  };
+
   const app = await buildApp();
   await app.ready();
   global.__slaApiApp = app;
