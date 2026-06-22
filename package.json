@@ -9,5 +9,8 @@
     "dev": "npm -w apps/api run dev",
     "build": "npm -w packages/shared run build && npm -w apps/api run build",
     "start": "npm -w apps/api run start"
+  },
+  "engines": {
+    "node": "20.x"
   }
 }
