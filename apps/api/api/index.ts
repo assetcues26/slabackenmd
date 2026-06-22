@@ -1,12 +1,14 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import type { FastifyInstance, HTTPMethods, InjectOptions } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 
 declare global {
   // eslint-disable-next-line no-var
   var __slaApiApp: FastifyInstance | undefined;
 }
 
-const ALLOWED_METHODS: HTTPMethods[] = [
+type ApiMethod = 'GET' | 'HEAD' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS';
+
+const ALLOWED_METHODS: ApiMethod[] = [
   'GET',
   'HEAD',
   'POST',
@@ -31,9 +33,9 @@ const getRequestUrl = (req: VercelRequest): string => {
   return url.startsWith('/') ? url : `/${url}`;
 };
 
-const normalizeMethod = (value?: string): HTTPMethods => {
+const normalizeMethod = (value?: string): ApiMethod => {
   const upper = (value || 'GET').toUpperCase();
-  return ALLOWED_METHODS.includes(upper as HTTPMethods) ? (upper as HTTPMethods) : 'GET';
+  return ALLOWED_METHODS.includes(upper as ApiMethod) ? (upper as ApiMethod) : 'GET';
 };
 
 const getApp = async (): Promise<FastifyInstance> => {
@@ -64,19 +66,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const method = normalizeMethod(req.method);
     const headers = toInjectHeaders(req.headers);
 
-    const injectOptions: InjectOptions = {
-      method,
-      url,
-      headers,
-    };
-
+    let payload: string | undefined;
     if (req.body && method !== 'GET' && method !== 'HEAD') {
-      injectOptions.payload =
-        typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+      payload = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
       headers['content-type'] = headers['content-type'] || 'application/json';
     }
 
-    const response = await app.inject(injectOptions);
+    const response = await app.inject({
+      method,
+      url,
+      headers,
+      ...(payload ? { payload } : {}),
+    });
 
     res.statusCode = response.statusCode;
     for (const [key, value] of Object.entries(response.headers)) {
