@@ -1,5 +1,5 @@
 import fp from 'fastify-plugin';
-import { createRemoteJWKSet, jwtVerify } from 'jose';
+import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from 'jose';
 import { FastifyReply, FastifyRequest } from 'fastify';
 import { config } from '../config';
 
@@ -19,29 +19,40 @@ declare module 'fastify' {
   }
 }
 
-const normalizeSupabaseUrl = (url: string) => url.replace(/\/+$/, '');
+let jwks: JWTVerifyGetKey | null | undefined;
 
-const getJwks = () => {
-  if (!config.supabaseUrl) return null;
-  const base = normalizeSupabaseUrl(config.supabaseUrl);
-  return createRemoteJWKSet(new URL(`${base}/auth/v1/.well-known/jwks.json`));
+const getJwks = (): JWTVerifyGetKey | null => {
+  if (jwks !== undefined) {
+    return jwks;
+  }
+
+  jwks = null;
+  if (!config.supabaseUrl) {
+    return jwks;
+  }
+
+  try {
+    const jwksUrl = new URL('/auth/v1/.well-known/jwks.json', `${config.supabaseUrl}/`);
+    jwks = createRemoteJWKSet(jwksUrl);
+  } catch {
+    jwks = null;
+  }
+
+  return jwks;
 };
 
-const jwks = getJwks();
-
 const verifyToken = async (token: string) => {
-  const issuer = config.supabaseUrl
-    ? `${normalizeSupabaseUrl(config.supabaseUrl)}/auth/v1`
-    : undefined;
+  const issuer = config.supabaseUrl ? `${config.supabaseUrl}/auth/v1` : undefined;
 
   const verifyOptions = {
     issuer,
     audience: 'authenticated',
   };
 
-  if (jwks) {
+  const keySet = getJwks();
+  if (keySet) {
     try {
-      const { payload } = await jwtVerify(token, jwks, verifyOptions);
+      const { payload } = await jwtVerify(token, keySet, verifyOptions);
       return payload;
     } catch {
       // Fall through to legacy HS256 secret if configured
@@ -54,8 +65,8 @@ const verifyToken = async (token: string) => {
     return payload;
   }
 
-  if (jwks) {
-    const { payload } = await jwtVerify(token, jwks, verifyOptions);
+  if (keySet) {
+    const { payload } = await jwtVerify(token, keySet, verifyOptions);
     return payload;
   }
 

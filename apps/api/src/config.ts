@@ -3,6 +3,15 @@ import { z } from 'zod';
 
 dotenv.config();
 
+export const normalizeExternalUrl = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    return trimmed.replace(/\/+$/, '');
+  }
+  return `https://${trimmed.replace(/\/+$/, '')}`;
+};
+
 const envSchema = z.object({
   PORT: z.string().default('4000'),
   HOST: z.string().default('0.0.0.0'),
@@ -30,13 +39,15 @@ const parseCorsOrigin = (value: string) => {
   return origins.length === 1 ? origins[0] : origins;
 };
 
+const publicUrlRaw = env.PUBLIC_URL.trim() || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '');
+
 export const config = {
   port: Number(env.PORT),
   host: env.HOST,
   databaseUrl: env.DATABASE_URL,
-  supabaseUrl: env.SUPABASE_URL,
+  supabaseUrl: normalizeExternalUrl(env.SUPABASE_URL),
   supabaseAnonKey: env.SUPABASE_ANON_KEY,
   supabaseJwtSecret: env.SUPABASE_JWT_SECRET,
   corsOrigin: parseCorsOrigin(env.CORS_ORIGIN),
-  publicUrl: env.PUBLIC_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '/'),
+  publicUrl: publicUrlRaw ? normalizeExternalUrl(publicUrlRaw) : '/',
 };
