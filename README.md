@@ -14,26 +14,34 @@ npm run dev
 - API: http://localhost:4000/v1/health
 - Docs: http://localhost:4000/docs
 
-## Deploy on Vercel
+## Deploy on Render (recommended)
 
-1. Import https://github.com/assetcues26/slabackenmd
-2. **Root Directory:** `apps/api`
-3. Install/build commands are in `apps/api/vercel.json` (runs from monorepo root)
-4. Add environment variables (Production + Preview):
+This is a long-running Fastify server, so a server host (Render) is the simplest fit.
 
-| Variable | Description |
-|----------|-------------|
-| `DATABASE_URL` | Supabase **pooler** URL (port **6543**) — required for serverless |
+1. Push this repo to GitHub: https://github.com/assetcues26/slabackenmd
+2. Go to https://dashboard.render.com → **New** → **Blueprint**
+3. Connect the repo. Render reads `render.yaml` automatically.
+4. Set the environment variables (marked `sync: false` so you enter them in the dashboard):
+
+| Variable | Value |
+|----------|-------|
+| `DATABASE_URL` | Supabase **pooler** URL (port **6543**) |
 | `SUPABASE_URL` | `https://natlhzvunjrmuonusfdi.supabase.co` |
 | `SUPABASE_ANON_KEY` | Supabase anon key |
-| `SUPABASE_JWT_SECRET` | Supabase JWT secret (Settings → API → JWT Secret) |
-| `CORS_ORIGIN` | Frontend URL(s), comma-separated e.g. `https://slafrontend-web.vercel.app` |
+| `SUPABASE_JWT_SECRET` | *(leave empty unless using legacy HS256)* |
+| `CORS_ORIGIN` | `https://slafrontend-web.vercel.app,http://localhost:3000` |
 
-5. After deploy, copy your Vercel API URL and set on the **frontend** (Vercel):
+5. Deploy. Render runs:
+   - Build: `npm install && npm run build`
+   - Start: `npm start` → `node dist/server.js`
+   - Health check: `/v1/health`
+6. Copy the Render URL (e.g. `https://sla-backend-api.onrender.com`) and set on the **frontend** (Vercel):
 
 ```
-NEXT_PUBLIC_API_BASE_URL=https://your-api.vercel.app/v1
+NEXT_PUBLIC_API_BASE_URL=https://sla-backend-api.onrender.com/v1
 ```
+
+> Render's free tier sleeps after inactivity; the first request after idle may take ~30s to wake.
 
 ## API routes
 
@@ -50,6 +58,9 @@ NEXT_PUBLIC_API_BASE_URL=https://your-api.vercel.app/v1
 
 ```
 slabackend/
-├── apps/api/          Fastify API + Vercel serverless entry
-└── packages/shared/   SLA config shared types
+├── apps/api/          Fastify API
+│   ├── src/           Server source (server.ts is the entry)
+│   └── migrations/    Database schema
+├── packages/shared/   SLA config shared types
+└── render.yaml        Render Blueprint
 ```
