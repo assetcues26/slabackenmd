@@ -67,6 +67,16 @@ export const buildApp = async () => {
   await app.register(dbPlugin);
   await app.register(authPlugin);
 
+  app.get('/', async () => ({
+    service: 'Jira SLA API',
+    status: 'ok',
+    docs: '/docs',
+    health: '/v1/health',
+    version: 'v1',
+  }));
+
+  app.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }));
+
   app.register(healthRoutes, { prefix: '/v1' });
   app.register(slaRoutes, { prefix: '/v1' });
   app.register(ticketRoutes, { prefix: '/v1' });
