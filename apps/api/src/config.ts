@@ -22,6 +22,7 @@ const envSchema = z.object({
   SUPABASE_JWT_SECRET: z.string().optional().default(''),
   CORS_ORIGIN: z.string().default('http://localhost:3000'),
   PUBLIC_URL: z.string().optional().default(''),
+  ADMIN_USERNAME: z.string().optional().default('tejasjagdale'),
 });
 
 export type AppConfig = {
@@ -34,6 +35,7 @@ export type AppConfig = {
   supabaseJwtSecret: string;
   corsOrigin: string | string[];
   publicUrl: string;
+  adminUsername: string;
 };
 
 let cachedConfig: AppConfig | null = null;
@@ -71,6 +73,7 @@ export const loadConfig = (): AppConfig => {
     supabaseJwtSecret: env.SUPABASE_JWT_SECRET,
     corsOrigin: parseCorsOrigin(env.CORS_ORIGIN),
     publicUrl: publicUrlRaw ? normalizeExternalUrl(publicUrlRaw) : '/',
+    adminUsername: env.ADMIN_USERNAME.trim().toLowerCase(),
   };
 
   return cachedConfig;

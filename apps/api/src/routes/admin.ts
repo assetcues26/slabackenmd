@@ -1,29 +1,49 @@
 import { FastifyInstance } from 'fastify';
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { config } from '../config';
-
-let adminClient: SupabaseClient | null = null;
-
-const getAdminClient = (): SupabaseClient | null => {
-  if (adminClient) return adminClient;
-  if (!config.supabaseUrl || !config.supabaseServiceRoleKey) return null;
-  adminClient = createClient(config.supabaseUrl, config.supabaseServiceRoleKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
-  return adminClient;
-};
-
-const frontendBase = (): string => {
-  const origin = Array.isArray(config.corsOrigin) ? config.corsOrigin[0] : config.corsOrigin;
-  return (origin || '').replace(/\/+$/, '');
-};
 
 const VALID_ROLES = ['admin', 'agent', 'viewer'];
 
 type IdParam = { id: string };
 
+const listUsersSql = `
+  select
+    u.id,
+    u.email,
+    u.created_at as "createdAt",
+    u.last_sign_in_at as "lastSignInAt",
+    u.email_confirmed_at as "emailConfirmedAt",
+    u.banned_until as "bannedUntil",
+    p.username,
+    p.full_name as "fullName",
+    coalesce(p.role, 'viewer') as role
+  from auth.users u
+  left join public.profiles p on p.id = u.id
+  order by u.created_at asc
+`;
+
 export const adminRoutes = async (fastify: FastifyInstance) => {
-  // Current authenticated user's profile + role (used by the frontend to gate UI)
+  fastify.post('/auth/resolve-login', async (request, reply) => {
+    const { login } = (request.body ?? {}) as { login?: string };
+    const value = login?.trim();
+    if (!value) {
+      reply.code(400).send({ error: 'Username or email is required' });
+      return;
+    }
+    if (value.includes('@')) {
+      return { email: value.toLowerCase() };
+    }
+    const result = await fastify.db.query(
+      'select email from public.profiles where lower(username) = lower($1) limit 1',
+      [value],
+    );
+    const email = result.rows[0]?.email;
+    if (!email) {
+      reply.code(404).send({ error: 'User not found' });
+      return;
+    }
+    return { email };
+  });
+
   fastify.get('/me', { preHandler: fastify.requireAuth }, async (request) => {
     const userId = request.authUser?.sub;
     const result = await fastify.db.query(
@@ -43,39 +63,20 @@ export const adminRoutes = async (fastify: FastifyInstance) => {
   fastify.get(
     '/admin/users',
     { preHandler: [fastify.requireAuth, fastify.requireAdmin] },
-    async (_request, reply) => {
-      const client = getAdminClient();
-      if (!client) {
-        reply.code(503).send({ error: 'Service role key not configured on the server' });
-        return;
-      }
-
-      const { data, error } = await client.auth.admin.listUsers({ page: 1, perPage: 1000 });
-      if (error) {
-        reply.code(502).send({ error: error.message });
-        return;
-      }
-
-      const profilesRes = await fastify.db.query('select id, role, username, full_name from profiles');
-      const roleMap = new Map(profilesRes.rows.map((r) => [r.id, r]));
+    async () => {
+      const result = await fastify.db.query(listUsersSql);
       const now = Date.now();
-
-      const users = data.users.map((u) => {
-        const profile = roleMap.get(u.id);
-        const bannedUntil = (u as { banned_until?: string }).banned_until;
-        return {
-          id: u.id,
-          email: u.email ?? null,
-          username: profile?.username ?? null,
-          fullName: profile?.full_name ?? null,
-          role: profile?.role ?? 'viewer',
-          createdAt: u.created_at ?? null,
-          lastSignInAt: u.last_sign_in_at ?? null,
-          emailConfirmed: Boolean(u.email_confirmed_at),
-          banned: Boolean(bannedUntil && new Date(bannedUntil).getTime() > now),
-        };
-      });
-
+      const users = result.rows.map((row) => ({
+        id: row.id,
+        email: row.email ?? null,
+        username: row.username ?? null,
+        fullName: row.fullName ?? null,
+        role: row.role ?? 'viewer',
+        createdAt: row.createdAt ?? null,
+        lastSignInAt: row.lastSignInAt ?? null,
+        emailConfirmed: Boolean(row.emailConfirmedAt),
+        banned: Boolean(row.bannedUntil && new Date(row.bannedUntil).getTime() > now),
+      }));
       return { users };
     },
   );
@@ -90,6 +91,17 @@ export const adminRoutes = async (fastify: FastifyInstance) => {
         reply.code(400).send({ error: 'Invalid role. Use admin, agent, or viewer.' });
         return;
       }
+      if (role === 'admin' && config.adminUsername) {
+        const check = await fastify.db.query(
+          'select username from profiles where id = $1',
+          [id],
+        );
+        const username = check.rows[0]?.username?.toLowerCase();
+        if (username !== config.adminUsername.toLowerCase()) {
+          reply.code(403).send({ error: `Only ${config.adminUsername} can be admin.` });
+          return;
+        }
+      }
       await fastify.db.query(
         `insert into profiles (id, role) values ($1, $2)
          on conflict (id) do update set role = excluded.role, updated_at = now()`,
@@ -103,28 +115,25 @@ export const adminRoutes = async (fastify: FastifyInstance) => {
     '/admin/users/:id/reset',
     { preHandler: [fastify.requireAuth, fastify.requireAdmin] },
     async (request, reply) => {
-      const client = getAdminClient();
-      if (!client) {
-        reply.code(503).send({ error: 'Service role key not configured on the server' });
+      const { id } = request.params as IdParam;
+      const { password } = (request.body ?? {}) as { password?: string };
+      const newPassword = password?.trim() || 'admin@2377';
+      if (newPassword.length < 8) {
+        reply.code(400).send({ error: 'Password must be at least 8 characters.' });
         return;
       }
-      const { id } = request.params as IdParam;
-      const userRes = await fastify.db.query('select email from auth.users where id = $1', [id]);
-      const email = userRes.rows[0]?.email;
-      if (!email) {
+      const updated = await fastify.db.query(
+        `update auth.users
+         set encrypted_password = crypt($2, gen_salt('bf')), updated_at = now()
+         where id = $1
+         returning email`,
+        [id, newPassword],
+      );
+      if (!updated.rows.length) {
         reply.code(404).send({ error: 'User not found' });
         return;
       }
-      const { data, error } = await client.auth.admin.generateLink({
-        type: 'recovery',
-        email,
-        options: { redirectTo: `${frontendBase()}/reset-password` },
-      });
-      if (error) {
-        reply.code(502).send({ error: error.message });
-        return;
-      }
-      return { email, link: data.properties?.action_link ?? null };
+      return { email: updated.rows[0].email, reset: true };
     },
   );
 
@@ -132,24 +141,18 @@ export const adminRoutes = async (fastify: FastifyInstance) => {
     '/admin/users/:id/ban',
     { preHandler: [fastify.requireAuth, fastify.requireAdmin] },
     async (request, reply) => {
-      const client = getAdminClient();
-      if (!client) {
-        reply.code(503).send({ error: 'Service role key not configured on the server' });
-        return;
-      }
       const { id } = request.params as IdParam;
       const { banned } = (request.body ?? {}) as { banned?: boolean };
       if (id === request.authUser?.sub) {
         reply.code(400).send({ error: 'You cannot change access for your own account' });
         return;
       }
-      const { error } = await client.auth.admin.updateUserById(id, {
-        ban_duration: banned ? '876000h' : 'none',
-      });
-      if (error) {
-        reply.code(502).send({ error: error.message });
-        return;
-      }
+      await fastify.db.query(
+        `update auth.users
+         set banned_until = $2, updated_at = now()
+         where id = $1`,
+        [id, banned ? '2099-01-01T00:00:00Z' : null],
+      );
       return { id, banned: Boolean(banned) };
     },
   );
@@ -158,19 +161,16 @@ export const adminRoutes = async (fastify: FastifyInstance) => {
     '/admin/users/:id',
     { preHandler: [fastify.requireAuth, fastify.requireAdmin] },
     async (request, reply) => {
-      const client = getAdminClient();
-      if (!client) {
-        reply.code(503).send({ error: 'Service role key not configured on the server' });
-        return;
-      }
       const { id } = request.params as IdParam;
       if (id === request.authUser?.sub) {
         reply.code(400).send({ error: 'You cannot delete your own account' });
         return;
       }
-      const { error } = await client.auth.admin.deleteUser(id);
-      if (error) {
-        reply.code(502).send({ error: error.message });
+      const deleted = await fastify.db.query('delete from auth.users where id = $1 returning id', [
+        id,
+      ]);
+      if (!deleted.rows.length) {
+        reply.code(404).send({ error: 'User not found' });
         return;
       }
       return { id, deleted: true };

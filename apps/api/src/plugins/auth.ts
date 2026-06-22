@@ -106,10 +106,21 @@ export const authPlugin = fp(async (fastify) => {
       return;
     }
 
-    const result = await fastify.db.query('select role from profiles where id = $1', [userId]);
-    const role = result.rows[0]?.role;
+    const result = await fastify.db.query(
+      'select role, lower(username) as username from profiles where id = $1',
+      [userId],
+    );
+    const row = result.rows[0];
+    const role = row?.role;
+    const username = row?.username;
+    const adminUser = config.adminUsername;
+
     if (role !== 'admin') {
       reply.code(403).send({ error: 'Admin access required' });
+      return;
+    }
+    if (adminUser && username !== adminUser) {
+      reply.code(403).send({ error: 'Admin access restricted to the configured account' });
       return;
     }
   });
