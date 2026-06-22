@@ -16,6 +16,7 @@ declare module 'fastify' {
 
   interface FastifyInstance {
     requireAuth: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
+    requireAdmin: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
   }
 }
 
@@ -94,6 +95,21 @@ export const authPlugin = fp(async (fastify) => {
       };
     } catch {
       reply.code(401).send({ error: 'Invalid or expired token' });
+      return;
+    }
+  });
+
+  fastify.decorate('requireAdmin', async (request, reply) => {
+    const userId = request.authUser?.sub;
+    if (!userId) {
+      reply.code(401).send({ error: 'Authentication required' });
+      return;
+    }
+
+    const result = await fastify.db.query('select role from profiles where id = $1', [userId]);
+    const role = result.rows[0]?.role;
+    if (role !== 'admin') {
+      reply.code(403).send({ error: 'Admin access required' });
       return;
     }
   });

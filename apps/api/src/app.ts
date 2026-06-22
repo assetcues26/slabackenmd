@@ -12,6 +12,7 @@ import { ticketRoutes } from './routes/tickets';
 import { notificationRoutes } from './routes/notifications';
 import { statusHistoryRoutes } from './routes/status-history';
 import { statsRoutes } from './routes/stats';
+import { adminRoutes } from './routes/admin';
 
 const isVercel = Boolean(process.env.VERCEL);
 
@@ -83,6 +84,7 @@ export const buildApp = async () => {
   app.register(statsRoutes, { prefix: '/v1' });
   app.register(statusHistoryRoutes, { prefix: '/v1' });
   app.register(notificationRoutes, { prefix: '/v1' });
+  app.register(adminRoutes, { prefix: '/v1' });
 
   return app;
 };

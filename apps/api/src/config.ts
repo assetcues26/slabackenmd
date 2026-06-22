@@ -18,6 +18,7 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   SUPABASE_URL: z.string().optional().default(''),
   SUPABASE_ANON_KEY: z.string().optional().default(''),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().optional().default(''),
   SUPABASE_JWT_SECRET: z.string().optional().default(''),
   CORS_ORIGIN: z.string().default('http://localhost:3000'),
   PUBLIC_URL: z.string().optional().default(''),
@@ -29,6 +30,7 @@ export type AppConfig = {
   databaseUrl: string;
   supabaseUrl: string;
   supabaseAnonKey: string;
+  supabaseServiceRoleKey: string;
   supabaseJwtSecret: string;
   corsOrigin: string | string[];
   publicUrl: string;
@@ -65,6 +67,7 @@ export const loadConfig = (): AppConfig => {
     databaseUrl: env.DATABASE_URL,
     supabaseUrl: normalizeExternalUrl(env.SUPABASE_URL),
     supabaseAnonKey: env.SUPABASE_ANON_KEY,
+    supabaseServiceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY,
     supabaseJwtSecret: env.SUPABASE_JWT_SECRET,
     corsOrigin: parseCorsOrigin(env.CORS_ORIGIN),
     publicUrl: publicUrlRaw ? normalizeExternalUrl(publicUrlRaw) : '/',
