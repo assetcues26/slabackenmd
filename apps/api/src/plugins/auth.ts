@@ -26,15 +26,19 @@ const jwks = config.supabaseUrl
 const verifyToken = async (token: string) => {
   const issuer = config.supabaseUrl ? `${config.supabaseUrl}/auth/v1` : undefined;
 
+  // Prefer JWKS (ES256) — current Supabase default. Legacy HS256 secret is fallback only.
+  if (jwks) {
+    const { payload } = await jwtVerify(token, jwks, { issuer });
+    return payload;
+  }
+
   if (config.supabaseJwtSecret) {
     const key = new TextEncoder().encode(config.supabaseJwtSecret);
     const { payload } = await jwtVerify(token, key, { issuer });
     return payload;
   }
 
-  if (!jwks) throw new Error('Supabase auth not configured');
-  const { payload } = await jwtVerify(token, jwks, { issuer });
-  return payload;
+  throw new Error('Supabase auth not configured');
 };
 
 export const authPlugin = fp(async (fastify) => {
