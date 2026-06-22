@@ -1,0 +1,254 @@
+[
+  {
+    "main_status": "Report",
+    "timings": {},
+    "workflow": [
+      {
+        "team": "Support",
+        "status": "Triage Required with Product"
+      },
+      {
+        "team": "Product",
+        "status": "Migrated to Prod"
+      },
+      {
+        "team": "Support",
+        "status": null
+      }
+    ]
+  },
+  {
+    "main_status": "RCA Discovery",
+    "timings": {
+      "Highest": 45,
+      "High": 45,
+      "Medium": 60
+    },
+    "workflow": [
+      {
+        "team": "QA",
+        "status": "Triage Required with Tech"
+      },
+      {
+        "team": "Tech",
+        "status": "Backend Changes Ticket Created/Attached"
+      },
+      {
+        "team": "Support",
+        "status": null
+      }
+    ]
+  },
+  {
+    "main_status": "Bug (Tech RCA)",
+    "timings": {
+      "Highest": 45,
+      "High": 45,
+      "Medium": 360
+    },
+    "workflow": [
+      {
+        "team": "Tech",
+        "status": "In Progress"
+      },
+      {
+        "team": "Tech",
+        "status": "No Action Required"
+      },
+      {
+        "team": "Support",
+        "status": null
+      }
+    ]
+  },
+  {
+    "main_status": "Triaged",
+    "timings": {
+      "Highest": 20,
+      "High": 20,
+      "Medium": 60
+    },
+    "workflow": [
+      {
+        "team": "Product",
+        "status": "QA Failed"
+      },
+      {
+        "team": "Tech",
+        "status": "UAT Done with Customer"
+      },
+      {
+        "team": "Support",
+        "status": null
+      }
+    ]
+  },
+  {
+    "main_status": "Sprint ticket available/created",
+    "timings": {
+      "Highest": "Due Date",
+      "High": "Due Date",
+      "Medium": "Due Date"
+    },
+    "workflow": [
+      {
+        "team": "QA/Tech",
+        "status": "Clone Ticket Created"
+      },
+      {
+        "team": "Tech",
+        "status": null
+      }
+    ]
+  },
+  {
+    "main_status": "Fastrack ticket available/created",
+    "timings": {
+      "Highest": "Due Date",
+      "High": "Due Date",
+      "Medium": "Due Date"
+    },
+    "workflow": [
+      {
+        "team": "QA/Tech",
+        "status": "Ready for Unit Test (HF)"
+      },
+      {
+        "team": "Tech",
+        "status": null
+      }
+    ]
+  },
+  {
+    "main_status": "HotFix Route",
+    "timings": {
+      "Highest": "Due Date",
+      "High": "Due Date",
+      "Medium": "Due Date"
+    },
+    "workflow": [
+      {
+        "team": "QA/Tech",
+        "status": "Ready for Unit Test (PP)"
+      },
+      {
+        "team": "Tech",
+        "status": null
+      }
+    ]
+  },
+  {
+    "main_status": "Config Changes",
+    "timings": {
+      "Highest": 20,
+      "High": 20,
+      "Medium": 60
+    },
+    "workflow": [
+      {
+        "team": "Product",
+        "status": "Ready for Unit Test (Prod)"
+      },
+      {
+        "team": "Tech",
+        "status": null
+      }
+    ]
+  },
+  {
+    "main_status": "Approved by CSM/Product",
+    "timings": {
+      "Highest": 20,
+      "High": 20,
+      "Medium": 60
+    },
+    "workflow": [
+      {
+        "team": "Product",
+        "status": "Ready for QA (HF)"
+      },
+      {
+        "team": "QA",
+        "status": null
+      }
+    ]
+  },
+  {
+    "main_status": "Changes Completed",
+    "timings": {
+      "Highest": 10,
+      "High": 10,
+      "Medium": 30
+    },
+    "workflow": [
+      {
+        "team": "QA",
+        "status": "Ready for QA (PP)"
+      },
+      {
+        "team": "QA",
+        "status": null
+      }
+    ]
+  },
+  {
+    "main_status": "Backend Changes Required",
+    "timings": {
+      "Highest": 15,
+      "High": 15,
+      "Medium": 30
+    },
+    "workflow": [
+      {
+        "team": "QA",
+        "status": "Ready for QA (Prod)"
+      },
+      {
+        "team": "QA",
+        "status": null
+      }
+    ]
+  },
+  {
+    "main_status": null,
+    "timings": {},
+    "workflow": [
+      {
+        "team": null,
+        "status": "QA Done (HF)"
+      },
+      {
+        "team": "Tech",
+        "status": null
+      }
+    ]
+  },
+  {
+    "main_status": null,
+    "timings": {},
+    "workflow": [
+      {
+        "team": null,
+        "status": "QA Done (PP)"
+      },
+      {
+        "team": "Tech",
+        "status": null
+      }
+    ]
+  },
+  {
+    "main_status": null,
+    "timings": {},
+    "workflow": [
+      {
+        "team": null,
+        "status": "QA Done (Prod)"
+      },
+      {
+        "team": "Support",
+        "status": null
+      }
+    ]
+  }
+]

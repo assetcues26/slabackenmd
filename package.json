@@ -1,0 +1,13 @@
+{
+  "name": "sla-backend",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm -w apps/api run dev",
+    "build": "npm -w packages/shared run build && npm -w apps/api run build",
+    "start": "npm -w apps/api run start"
+  }
+}
