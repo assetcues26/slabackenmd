@@ -1,24 +1,13 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import type { FastifyInstance } from 'fastify';
-import { buildApp } from '../src/app';
+import type { InjectOptions } from 'fastify';
 
 declare global {
   // eslint-disable-next-line no-var
   var __slaApiApp: FastifyInstance | undefined;
 }
 
-const getApp = async (): Promise<FastifyInstance> => {
-  if (global.__slaApiApp) {
-    return global.__slaApiApp;
-  }
-
-  const app = await buildApp();
-  await app.ready();
-  global.__slaApiApp = app;
-  return app;
-};
-
-const normalizeVercelRequest = (req: VercelRequest) => {
+const getRequestUrl = (req: VercelRequest): string => {
   let url = req.url || '/';
 
   if (url.startsWith('http://') || url.startsWith('https://')) {
@@ -30,26 +19,58 @@ const normalizeVercelRequest = (req: VercelRequest) => {
     }
   }
 
-  if (!url.startsWith('/')) {
-    url = `/${url}`;
+  return url.startsWith('/') ? url : `/${url}`;
+};
+
+const getApp = async (): Promise<FastifyInstance> => {
+  if (global.__slaApiApp) {
+    return global.__slaApiApp;
   }
 
-  req.url = url;
+  const { buildApp } = await import('../src/app');
+  const app = await buildApp();
+  await app.ready();
+  global.__slaApiApp = app;
+  return app;
+};
 
-  if (!req.headers.host) {
-    const forwardedHost = req.headers['x-forwarded-host'];
-    req.headers.host =
-      (typeof forwardedHost === 'string' ? forwardedHost : undefined) ||
-      process.env.VERCEL_URL ||
-      'localhost';
+const toInjectHeaders = (headers: VercelRequest['headers']) => {
+  const result: Record<string, string> = {};
+  for (const [key, value] of Object.entries(headers)) {
+    if (value === undefined) continue;
+    result[key] = Array.isArray(value) ? value.join(', ') : value;
   }
+  return result;
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
-    normalizeVercelRequest(req);
     const app = await getApp();
-    app.server.emit('request', req, res);
+    const url = getRequestUrl(req);
+    const method = (req.method || 'GET').toUpperCase();
+
+    const injectOptions: InjectOptions = {
+      method,
+      url,
+      headers: toInjectHeaders(req.headers),
+    };
+
+    if (req.body && method !== 'GET' && method !== 'HEAD') {
+      injectOptions.payload =
+        typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+      injectOptions.headers['content-type'] =
+        injectOptions.headers['content-type'] || 'application/json';
+    }
+
+    const response = await app.inject(injectOptions);
+
+    res.statusCode = response.statusCode;
+    for (const [key, value] of Object.entries(response.headers)) {
+      if (value !== undefined) {
+        res.setHeader(key, value);
+      }
+    }
+    res.end(response.body);
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('API handler error:', err);
@@ -57,6 +78,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       res.status(500).json({
         error: 'Server error',
         message: err instanceof Error ? err.message : 'Unknown error',
+        hint: 'Check Vercel env vars: DATABASE_URL, SUPABASE_URL, SUPABASE_ANON_KEY, CORS_ORIGIN',
       });
     }
   }

@@ -23,13 +23,18 @@ const envSchema = z.object({
   PUBLIC_URL: z.string().optional().default(''),
 });
 
-const parsed = envSchema.safeParse(process.env);
-if (!parsed.success) {
-  const details = parsed.error.issues.map((i) => i.message).join('; ');
-  throw new Error(`Invalid environment: ${details}`);
-}
+export type AppConfig = {
+  port: number;
+  host: string;
+  databaseUrl: string;
+  supabaseUrl: string;
+  supabaseAnonKey: string;
+  supabaseJwtSecret: string;
+  corsOrigin: string | string[];
+  publicUrl: string;
+};
 
-const env = parsed.data;
+let cachedConfig: AppConfig | null = null;
 
 const parseCorsOrigin = (value: string) => {
   const origins = value
@@ -39,15 +44,37 @@ const parseCorsOrigin = (value: string) => {
   return origins.length === 1 ? origins[0] : origins;
 };
 
-const publicUrlRaw = env.PUBLIC_URL.trim() || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '');
+export const loadConfig = (): AppConfig => {
+  if (cachedConfig) {
+    return cachedConfig;
+  }
 
-export const config = {
-  port: Number(env.PORT),
-  host: env.HOST,
-  databaseUrl: env.DATABASE_URL,
-  supabaseUrl: normalizeExternalUrl(env.SUPABASE_URL),
-  supabaseAnonKey: env.SUPABASE_ANON_KEY,
-  supabaseJwtSecret: env.SUPABASE_JWT_SECRET,
-  corsOrigin: parseCorsOrigin(env.CORS_ORIGIN),
-  publicUrl: publicUrlRaw ? normalizeExternalUrl(publicUrlRaw) : '/',
+  const parsed = envSchema.safeParse(process.env);
+  if (!parsed.success) {
+    const details = parsed.error.issues.map((issue) => issue.message).join('; ');
+    throw new Error(`Invalid environment: ${details}`);
+  }
+
+  const env = parsed.data;
+  const publicUrlRaw =
+    env.PUBLIC_URL.trim() || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '');
+
+  cachedConfig = {
+    port: Number(env.PORT),
+    host: env.HOST,
+    databaseUrl: env.DATABASE_URL,
+    supabaseUrl: normalizeExternalUrl(env.SUPABASE_URL),
+    supabaseAnonKey: env.SUPABASE_ANON_KEY,
+    supabaseJwtSecret: env.SUPABASE_JWT_SECRET,
+    corsOrigin: parseCorsOrigin(env.CORS_ORIGIN),
+    publicUrl: publicUrlRaw ? normalizeExternalUrl(publicUrlRaw) : '/',
+  };
+
+  return cachedConfig;
 };
+
+export const config: AppConfig = new Proxy({} as AppConfig, {
+  get(_target, prop: keyof AppConfig) {
+    return loadConfig()[prop];
+  },
+});
