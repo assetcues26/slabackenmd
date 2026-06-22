@@ -19,22 +19,43 @@ declare module 'fastify' {
   }
 }
 
-const jwks = config.supabaseUrl
-  ? createRemoteJWKSet(new URL(`${config.supabaseUrl}/auth/v1/keys`))
-  : null;
+const normalizeSupabaseUrl = (url: string) => url.replace(/\/+$/, '');
+
+const getJwks = () => {
+  if (!config.supabaseUrl) return null;
+  const base = normalizeSupabaseUrl(config.supabaseUrl);
+  return createRemoteJWKSet(new URL(`${base}/auth/v1/.well-known/jwks.json`));
+};
+
+const jwks = getJwks();
 
 const verifyToken = async (token: string) => {
-  const issuer = config.supabaseUrl ? `${config.supabaseUrl}/auth/v1` : undefined;
+  const issuer = config.supabaseUrl
+    ? `${normalizeSupabaseUrl(config.supabaseUrl)}/auth/v1`
+    : undefined;
 
-  // Prefer JWKS (ES256) — current Supabase default. Legacy HS256 secret is fallback only.
+  const verifyOptions = {
+    issuer,
+    audience: 'authenticated',
+  };
+
   if (jwks) {
-    const { payload } = await jwtVerify(token, jwks, { issuer });
-    return payload;
+    try {
+      const { payload } = await jwtVerify(token, jwks, verifyOptions);
+      return payload;
+    } catch {
+      // Fall through to legacy HS256 secret if configured
+    }
   }
 
   if (config.supabaseJwtSecret) {
     const key = new TextEncoder().encode(config.supabaseJwtSecret);
-    const { payload } = await jwtVerify(token, key, { issuer });
+    const { payload } = await jwtVerify(token, key, verifyOptions);
+    return payload;
+  }
+
+  if (jwks) {
+    const { payload } = await jwtVerify(token, jwks, verifyOptions);
     return payload;
   }
 
@@ -60,7 +81,7 @@ export const authPlugin = fp(async (fastify) => {
         email: payload.email ? String(payload.email) : undefined,
         role: payload.role ? String(payload.role) : undefined,
       };
-    } catch (err) {
+    } catch {
       reply.code(401).send({ error: 'Invalid or expired token' });
       return;
     }
