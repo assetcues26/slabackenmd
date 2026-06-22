@@ -6,7 +6,7 @@ dotenv.config();
 const envSchema = z.object({
   PORT: z.string().default('4000'),
   HOST: z.string().default('0.0.0.0'),
-  DATABASE_URL: z.string().min(1),
+  DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   SUPABASE_URL: z.string().optional().default(''),
   SUPABASE_ANON_KEY: z.string().optional().default(''),
   SUPABASE_JWT_SECRET: z.string().optional().default(''),
@@ -14,7 +14,13 @@ const envSchema = z.object({
   PUBLIC_URL: z.string().optional().default(''),
 });
 
-const env = envSchema.parse(process.env);
+const parsed = envSchema.safeParse(process.env);
+if (!parsed.success) {
+  const details = parsed.error.issues.map((i) => i.message).join('; ');
+  throw new Error(`Invalid environment: ${details}`);
+}
+
+const env = parsed.data;
 
 const parseCorsOrigin = (value: string) => {
   const origins = value

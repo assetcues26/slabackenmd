@@ -13,24 +13,30 @@ import { notificationRoutes } from './routes/notifications';
 import { statusHistoryRoutes } from './routes/status-history';
 import { statsRoutes } from './routes/stats';
 
+const isVercel = Boolean(process.env.VERCEL);
+
 export const buildApp = async () => {
-  const app = Fastify({ logger: !process.env.VERCEL });
+  const app = Fastify({ logger: !isVercel });
 
   await app.register(cors, {
     origin: config.corsOrigin,
     credentials: true,
   });
-  await app.register(helmet);
-  await app.register(swagger, {
-    openapi: {
-      info: {
-        title: 'Jira SLA API',
-        version: '0.1.0',
+
+  await app.register(helmet, isVercel ? { contentSecurityPolicy: false } : undefined);
+
+  if (!isVercel) {
+    await app.register(swagger, {
+      openapi: {
+        info: {
+          title: 'Jira SLA API',
+          version: '0.1.0',
+        },
+        servers: [{ url: config.publicUrl }],
       },
-      servers: [{ url: config.publicUrl }],
-    },
-  });
-  await app.register(swaggerUi, { routePrefix: '/docs' });
+    });
+    await app.register(swaggerUi, { routePrefix: '/docs' });
+  }
 
   await app.register(dbPlugin);
   await app.register(authPlugin);
