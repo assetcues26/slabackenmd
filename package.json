@@ -11,6 +11,6 @@
     "start": "npm -w apps/api run start"
   },
   "engines": {
-    "node": "20.x"
+    "node": ">=18"
   }
 }
