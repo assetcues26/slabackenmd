@@ -1,131 +1,72 @@
 import { FastifyInstance } from 'fastify';
 
-const toMap = (rows: Array<{ key: string; count: number }>): Record<string, number> => {
-  const map: Record<string, number> = {};
-  for (const row of rows) map[row.key] = row.count;
-  return map;
-};
+const STATS_TTL_MS = 20_000;
+let statsCache: { at: number; data: unknown } | null = null;
+
+const STATS_SQL = `
+with t as (select * from tickets)
+select json_build_object(
+  'totalTickets', (select count(*)::int from t),
+  'activeBreaches', (select count(*)::int from t where current_status_sla = 'YES'),
+  'missingDueDates', (select count(*)::int from t where due_date_missing = true),
+  'avgStatusDuration', (select coalesce(round(avg(current_status_duration)), 0)::int from t where current_status_duration is not null),
+  'byTeam', (select coalesce(json_object_agg(k, c), '{}'::json) from (
+    select coalesce(status_team, 'Unknown') k, count(*)::int c from t where current_status_sla = 'YES' group by 1
+  ) s),
+  'byStatus', (select coalesce(json_object_agg(k, c), '{}'::json) from (
+    select coalesce(current_status, 'Unknown') k, count(*)::int c from t group by 1 order by c desc limit 15
+  ) s),
+  'byPriority', (select coalesce(json_object_agg(k, c), '{}'::json) from (
+    select coalesce(priority, 'Unknown') k, count(*)::int c from t group by 1
+  ) s),
+  'byCategory', (select coalesce(json_object_agg(k, c), '{}'::json) from (
+    select coalesce(status_category, 'Unknown') k, count(*)::int c from t group by 1
+  ) s),
+  'byIssueType', (select coalesce(json_object_agg(k, c), '{}'::json) from (
+    select coalesce(issue_type, 'Unknown') k, count(*)::int c from t group by 1
+  ) s),
+  'byProject', (select coalesce(json_object_agg(k, c), '{}'::json) from (
+    select coalesce(project, 'Unknown') k, count(*)::int c from t group by 1
+  ) s),
+  'allTeams', (select coalesce(json_agg(team order by team), '[]'::json) from (
+    select distinct status_team team from t where status_team is not null and status_team <> ''
+  ) s),
+  'slaByPhase', json_build_object(
+    'todo', json_build_object(
+      'breached', (select count(*)::int from t where todo_sla = 'YES'),
+      'total', (select count(*)::int from t where todo_sla is not null and todo_sla <> '')
+    ),
+    'inprogress', json_build_object(
+      'breached', (select count(*)::int from t where inprogress_sla = 'YES'),
+      'total', (select count(*)::int from t where inprogress_sla is not null and inprogress_sla <> '')
+    ),
+    'current', json_build_object(
+      'breached', (select count(*)::int from t where current_status_sla = 'YES'),
+      'total', (select count(*)::int from t where current_status_sla is not null and current_status_sla <> '')
+    )
+  ),
+  'createdTrend', (select coalesce(json_agg(json_build_object('day', d, 'count', c) order by d), '[]'::json) from (
+    select to_char(date_trunc('day', created), 'YYYY-MM-DD') d, count(*)::int c from t where created is not null group by 1
+  ) s),
+  'avgDurationByStatus', (select coalesce(json_agg(json_build_object('status', status, 'avg', a) order by a desc), '[]'::json) from (
+    select coalesce(current_status, 'Unknown') status, coalesce(round(avg(current_status_duration)), 0)::int a
+    from t where current_status_duration is not null group by 1 order by a desc limit 10
+  ) s)
+) as result
+`;
 
 export const statsRoutes = async (fastify: FastifyInstance) => {
-  fastify.get('/stats', { preHandler: fastify.requireAuth }, async () => {
-    const [
-      totals,
-      breaches,
-      missing,
-      avgDur,
-      byTeam,
-      byStatus,
-      byPriority,
-      byCategory,
-      byIssueType,
-      byProject,
-      slaPhase,
-      createdTrend,
-      avgByStatus,
-    ] = await Promise.all([
-      fastify.db.query('select count(*)::int as count from tickets'),
-      fastify.db.query(
-        "select count(*)::int as count from tickets where current_status_sla = 'YES'",
-      ),
-      fastify.db.query(
-        'select count(*)::int as count from tickets where due_date_missing = true',
-      ),
-      fastify.db.query(
-        'select coalesce(round(avg(current_status_duration)), 0)::int as avg from tickets where current_status_duration is not null',
-      ),
-      fastify.db.query(`
-        select coalesce(status_team, 'Unknown') as key, count(*)::int as count
-        from tickets
-        where current_status_sla = 'YES'
-        group by status_team
-        order by count desc
-      `),
-      fastify.db.query(`
-        select coalesce(current_status, 'Unknown') as key, count(*)::int as count
-        from tickets
-        group by current_status
-        order by count desc
-        limit 15
-      `),
-      fastify.db.query(`
-        select coalesce(priority, 'Unknown') as key, count(*)::int as count
-        from tickets
-        group by priority
-        order by count desc
-      `),
-      fastify.db.query(`
-        select coalesce(status_category, 'Unknown') as key, count(*)::int as count
-        from tickets
-        group by status_category
-        order by count desc
-      `),
-      fastify.db.query(`
-        select coalesce(issue_type, 'Unknown') as key, count(*)::int as count
-        from tickets
-        group by issue_type
-        order by count desc
-      `),
-      fastify.db.query(`
-        select coalesce(project, 'Unknown') as key, count(*)::int as count
-        from tickets
-        group by project
-        order by count desc
-      `),
-      fastify.db.query(`
-        select
-          count(*) filter (where todo_sla = 'YES')::int as todo_breached,
-          count(*) filter (where todo_sla is not null and todo_sla <> '')::int as todo_total,
-          count(*) filter (where inprogress_sla = 'YES')::int as inprogress_breached,
-          count(*) filter (where inprogress_sla is not null and inprogress_sla <> '')::int as inprogress_total,
-          count(*) filter (where current_status_sla = 'YES')::int as current_breached,
-          count(*) filter (where current_status_sla is not null and current_status_sla <> '')::int as current_total
-        from tickets
-      `),
-      fastify.db.query(`
-        select to_char(date_trunc('day', created), 'YYYY-MM-DD') as day, count(*)::int as count
-        from tickets
-        where created is not null
-        group by 1
-        order by 1 asc
-        limit 60
-      `),
-      fastify.db.query(`
-        select coalesce(current_status, 'Unknown') as status,
-               coalesce(round(avg(current_status_duration)), 0)::int as avg
-        from tickets
-        where current_status_duration is not null
-        group by current_status
-        order by avg desc
-        limit 10
-      `),
-    ]);
+  fastify.get('/stats', { preHandler: fastify.requireAuth }, async (_request, reply) => {
+    const now = Date.now();
+    if (statsCache && now - statsCache.at < STATS_TTL_MS) {
+      reply.header('x-cache', 'HIT');
+      return statsCache.data;
+    }
 
-    const phase = slaPhase.rows[0] ?? {};
-
-    return {
-      totalTickets: totals.rows[0]?.count ?? 0,
-      activeBreaches: breaches.rows[0]?.count ?? 0,
-      missingDueDates: missing.rows[0]?.count ?? 0,
-      avgStatusDuration: avgDur.rows[0]?.avg ?? 0,
-      byTeam: toMap(byTeam.rows),
-      byStatus: toMap(byStatus.rows),
-      byPriority: toMap(byPriority.rows),
-      byCategory: toMap(byCategory.rows),
-      byIssueType: toMap(byIssueType.rows),
-      byProject: toMap(byProject.rows),
-      slaByPhase: {
-        todo: { breached: phase.todo_breached ?? 0, total: phase.todo_total ?? 0 },
-        inprogress: {
-          breached: phase.inprogress_breached ?? 0,
-          total: phase.inprogress_total ?? 0,
-        },
-        current: { breached: phase.current_breached ?? 0, total: phase.current_total ?? 0 },
-      },
-      createdTrend: createdTrend.rows.map((row) => ({ day: row.day, count: row.count })),
-      avgDurationByStatus: avgByStatus.rows.map((row) => ({
-        status: row.status,
-        avg: row.avg,
-      })),
-    };
+    const result = await fastify.db.query(STATS_SQL);
+    const data = result.rows[0]?.result ?? {};
+    statsCache = { at: now, data };
+    reply.header('x-cache', 'MISS');
+    return data;
   });
 };
