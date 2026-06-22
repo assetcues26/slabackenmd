@@ -61,6 +61,8 @@ export const ticketRoutes = async (fastify: FastifyInstance) => {
         due_date_missing,
         jira_ticket_url,
         project,
+        reporter,
+        issue_type,
         todo_sla,
         inprogress_sla,
         updated,
