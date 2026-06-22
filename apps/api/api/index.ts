@@ -1,11 +1,20 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import type { FastifyInstance } from 'fastify';
-import type { InjectOptions } from 'fastify';
+import type { FastifyInstance, HTTPMethods, InjectOptions } from 'fastify';
 
 declare global {
   // eslint-disable-next-line no-var
   var __slaApiApp: FastifyInstance | undefined;
 }
+
+const ALLOWED_METHODS: HTTPMethods[] = [
+  'GET',
+  'HEAD',
+  'POST',
+  'PUT',
+  'PATCH',
+  'DELETE',
+  'OPTIONS',
+];
 
 const getRequestUrl = (req: VercelRequest): string => {
   let url = req.url || '/';
@@ -22,6 +31,11 @@ const getRequestUrl = (req: VercelRequest): string => {
   return url.startsWith('/') ? url : `/${url}`;
 };
 
+const normalizeMethod = (value?: string): HTTPMethods => {
+  const upper = (value || 'GET').toUpperCase();
+  return ALLOWED_METHODS.includes(upper as HTTPMethods) ? (upper as HTTPMethods) : 'GET';
+};
+
 const getApp = async (): Promise<FastifyInstance> => {
   if (global.__slaApiApp) {
     return global.__slaApiApp;
@@ -34,7 +48,7 @@ const getApp = async (): Promise<FastifyInstance> => {
   return app;
 };
 
-const toInjectHeaders = (headers: VercelRequest['headers']) => {
+const toInjectHeaders = (headers: VercelRequest['headers']): Record<string, string> => {
   const result: Record<string, string> = {};
   for (const [key, value] of Object.entries(headers)) {
     if (value === undefined) continue;
@@ -47,19 +61,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const app = await getApp();
     const url = getRequestUrl(req);
-    const method = (req.method || 'GET').toUpperCase();
+    const method = normalizeMethod(req.method);
+    const headers = toInjectHeaders(req.headers);
 
     const injectOptions: InjectOptions = {
       method,
       url,
-      headers: toInjectHeaders(req.headers),
+      headers,
     };
 
     if (req.body && method !== 'GET' && method !== 'HEAD') {
       injectOptions.payload =
         typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
-      injectOptions.headers['content-type'] =
-        injectOptions.headers['content-type'] || 'application/json';
+      headers['content-type'] = headers['content-type'] || 'application/json';
     }
 
     const response = await app.inject(injectOptions);
