@@ -15,11 +15,37 @@ import { statsRoutes } from './routes/stats';
 
 const isVercel = Boolean(process.env.VERCEL);
 
+const buildCorsAllowList = (): string[] => {
+  const value = config.corsOrigin;
+  return Array.isArray(value) ? value : [value];
+};
+
+const isOriginAllowed = (origin: string, allowList: string[]): boolean => {
+  if (allowList.includes(origin)) return true;
+  try {
+    const { hostname } = new URL(origin);
+    if (hostname === 'localhost' || hostname === '127.0.0.1') return true;
+    if (hostname.endsWith('.vercel.app')) return true;
+  } catch {
+    return false;
+  }
+  return false;
+};
+
 export const buildApp = async () => {
   const app = Fastify({ logger: !isVercel });
 
+  const allowList = buildCorsAllowList();
+
   await app.register(cors, {
-    origin: config.corsOrigin,
+    origin: (origin, cb) => {
+      // Non-browser requests (curl, server-to-server) have no Origin header
+      if (!origin) {
+        cb(null, true);
+        return;
+      }
+      cb(null, isOriginAllowed(origin, allowList));
+    },
     credentials: true,
   });
 
